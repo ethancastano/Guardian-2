@@ -1,19 +1,36 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { supabase } from './supabase';
+import { PDFDocument, PDFTextField, PDFForm } from 'pdf-lib';
 
 interface PatronData {
   first_name: string;
   last_name: string;
   date_of_birth: string;
-  ctrs?: {
-    ctr_id: string;
-    gaming_day: string;
-    ship: string;
-    cash_in_total: number;
-    cash_out_total: number;
-    status: string;
-  }[];
+  ctrs?: Array<CTREntry>;
+}
+
+interface CTREntry {
+  ctr_id: string;
+  gaming_day: string;
+  ship: string;
+  cash_in_total: number;
+  cash_out_total: number;
+  status: string;
+}
+
+interface CTRData {
+  ctr_id: string;
+  gaming_day: string;
+  ship: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  embark_date: string;
+  debark_date: string;
+  cash_in_total: number;
+  cash_out_total: number;
+  patron_id: string;
 }
 
 export async function generatePatronPDF(patronId: string): Promise<Blob> {
@@ -59,7 +76,7 @@ export async function generatePatronPDF(patronId: string): Promise<Blob> {
       doc.setFontSize(16);
       doc.text('CTR History', 20, 80);
 
-      const tableData = patron.ctrs.map(ctr => [
+      const tableData = patron.ctrs.map((ctr: CTREntry) => [
         new Date(ctr.gaming_day).toLocaleDateString(),
         ctr.ship,
         formatCurrency(ctr.cash_in_total),
@@ -77,8 +94,8 @@ export async function generatePatronPDF(patronId: string): Promise<Blob> {
       });
 
       // Statistics
-      const totalCashIn = patron.ctrs.reduce((sum, ctr) => sum + ctr.cash_in_total, 0);
-      const totalCashOut = patron.ctrs.reduce((sum, ctr) => sum + ctr.cash_out_total, 0);
+      const totalCashIn = patron.ctrs.reduce((sum: number, ctr: CTREntry) => sum + ctr.cash_in_total, 0);
+      const totalCashOut = patron.ctrs.reduce((sum: number, ctr: CTREntry) => sum + ctr.cash_out_total, 0);
       const avgCashIn = totalCashIn / patron.ctrs.length;
       const avgCashOut = totalCashOut / patron.ctrs.length;
 
@@ -115,9 +132,52 @@ export async function generatePatronPDF(patronId: string): Promise<Blob> {
   }
 }
 
+export async function generateCTRFromTemplate(ctrData: CTRData): Promise<Blob> {
+  try {
+    // Fetch the CTR template from Supabase storage
+    const { data: templateData, error: templateError } = await supabase.storage
+      .from('templates')
+      .download('CTR_Template.pdf');
+
+    if (templateError) {
+      console.error('Error fetching template:', templateError);
+      throw templateError;
+    }
+    if (!templateData) {
+      throw new Error('CTR template not found');
+    }
+
+    // Convert template data to ArrayBuffer and return as Blob
+    const arrayBuffer = await templateData.arrayBuffer();
+    const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+
+    // Create a download link
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `CTR_${ctrData.ctr_id}_${new Date().toISOString().split('T')[0]}.pdf`;
+    
+    // Trigger download
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Clean up the URL
+    setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+    }, 100);
+
+    return blob;
+  } catch (error) {
+    console.error('Error handling CTR template:', error);
+    throw error;
+  }
+}
+
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'USD'
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
   }).format(amount);
 }

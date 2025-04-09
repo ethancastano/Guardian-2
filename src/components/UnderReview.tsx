@@ -3,23 +3,11 @@ import { Folder, X, Upload, Download, FileText, Save, ArrowLeft, Send, Check, Ar
 import { supabase } from '../lib/supabase';
 import { sortCases } from '../lib/sorting';
 import type { SortField, SortOrder } from '../lib/sorting';
+import { generateCTRFromTemplate } from '../lib/pdf';
+import { Case as ImportedCase } from '../types';
 
-interface Case {
-  id: string;
-  ctr_id?: string;
-  form_id?: string;
-  gaming_day: string | null;
-  current_owner: string | null;
-  status: string;
-  ship: string;
-  first_name: string;
-  last_name: string;
-  date_of_birth: string | null;
-  embark_date: string | null;
-  debark_date: string | null;
-  cash_in_total: number;
-  cash_out_total: number;
-  patron_id: string | null;
+interface ExtendedCase extends ImportedCase {
+  patron_id: string;
   folio_number?: string;
   voyage_total?: number;
   profiles?: {
@@ -28,7 +16,7 @@ interface Case {
 }
 
 interface UnderReviewProps {
-  cases: Case[];
+  cases: ImportedCase[];
   onStatusChange: (id: string, newStatus: string) => void;
 }
 
@@ -88,13 +76,13 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
   const [selectedCases, setSelectedCases] = useState<Set<string>>(new Set());
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
-  const [sortedCases, setSortedCases] = useState<Case[]>([]);
+  const [sortedCases, setSortedCases] = useState<ImportedCase[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [showCTRModal, setShowCTRModal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFormTab, setActiveFormTab] = useState<'CTRs' | '8300s'>('CTRs');
-  const [form8300s, setForm8300s] = useState<Case[]>([]);
+  const [form8300s, setForm8300s] = useState<ImportedCase[]>([]);
 
   useEffect(() => {
     loadTeamMembers();
@@ -247,102 +235,118 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
   };
 
   const handleSubmit = async () => {
-    if (!selectedCaseId || !selectedApprover || !selectedRecommendation) return;
+    if (!selectedApprover || !selectedRecommendation) return;
 
     try {
       setIsSubmitting(true);
+      const casesToSubmit = Array.from(selectedCases);
 
-      const currentCase = underReviewCases.find(c => {
-        const caseId = activeFormTab === 'CTRs' ? c.ctr_id : c.form_id;
-        return caseId === selectedCaseId;
-      });
+      for (const caseId of casesToSubmit) {
+        const currentCase = underReviewCases.find(c => {
+          const id = activeFormTab === 'CTRs' ? c.ctr_id : c.form_id;
+          return id === caseId;
+        }) as ExtendedCase | undefined;
 
-      if (!currentCase || !currentCase.patron_id) {
-        throw new Error('Case or patron information not found');
-      }
-
-      const caseFilesList = caseFiles[selectedCaseId] || [];
-
-      for (const file of caseFilesList) {
-        try {
-          const { data: fileData, error: downloadError } = await supabase.storage
-            .from('case-files')
-            .download(file.file_path);
-
-          if (downloadError) throw downloadError;
-
-          const patronFilePath = `${currentCase.patron_id}/${file.name}`;
-          const { error: uploadError } = await supabase.storage
-            .from('patron-files')
-            .upload(patronFilePath, fileData, {
-              contentType: file.type,
-              upsert: true
-            });
-
-          if (uploadError) throw uploadError;
-
-          const { error: dbError } = await supabase
-            .from('patron_files')
-            .insert({
-              patron_id: currentCase.patron_id,
-              file_name: file.name,
-              file_size: file.size,
-              file_type: file.type,
-              file_path: patronFilePath,
-              last_modified: new Date(file.lastModified).toISOString(),
-              user_id: (await supabase.auth.getUser()).data.user?.id,
-              description: `Copied from ${activeFormTab === 'CTRs' ? 'CTR' : '8300'} ${selectedCaseId}`
-            });
-
-          if (dbError) throw dbError;
-        } catch (error) {
-          console.error(`Error copying file ${file.name}:`, error);
+        if (!currentCase || !currentCase.patron_id) {
+          console.error(`Case or patron information not found for case ${caseId}`);
+          continue;
         }
+
+        const caseFilesList = caseFiles[caseId] || [];
+
+        // Copy files to patron database
+        for (const file of caseFilesList) {
+          try {
+            const { data: fileData, error: downloadError } = await supabase.storage
+              .from('case-files')
+              .download(file.file_path);
+
+            if (downloadError) throw downloadError;
+
+            const patronFilePath = `${currentCase.patron_id}/${file.name}`;
+            const { error: uploadError } = await supabase.storage
+              .from('patron-files')
+              .upload(patronFilePath, fileData, {
+                contentType: file.type,
+                upsert: true
+              });
+
+            if (uploadError) throw uploadError;
+
+            const { error: dbError } = await supabase
+              .from('patron_files')
+              .insert({
+                patron_id: currentCase.patron_id,
+                file_name: file.name,
+                file_size: file.size,
+                file_type: file.type,
+                file_path: patronFilePath,
+                last_modified: new Date(file.lastModified).toISOString(),
+                user_id: (await supabase.auth.getUser()).data.user?.id,
+                description: `Copied from ${activeFormTab === 'CTRs' ? 'CTR' : '8300'} ${caseId}`
+              });
+
+            if (dbError) throw dbError;
+          } catch (error) {
+            console.error(`Error copying file ${file.name} for case ${caseId}:`, error);
+          }
+        }
+
+        // Update case status
+        const table = activeFormTab === 'CTRs' ? 'ctrs' : 'form_8300s';
+        const idField = activeFormTab === 'CTRs' ? 'ctr_id' : 'form_id';
+
+        const { error: updateError } = await supabase
+          .from(table)
+          .update({
+            status: 'Submitted',
+            approver: selectedApprover,
+            recommendation: selectedRecommendation
+          })
+          .eq(idField, caseId);
+
+        if (updateError) throw updateError;
+
+        onStatusChange(caseId, 'Submitted');
       }
-
-      const table = activeFormTab === 'CTRs' ? 'ctrs' : 'form_8300s';
-      const idField = activeFormTab === 'CTRs' ? 'ctr_id' : 'form_id';
-
-      const { error: updateError } = await supabase
-        .from(table)
-        .update({
-          status: 'Submitted',
-          approver: selectedApprover,
-          recommendation: selectedRecommendation
-        })
-        .eq(idField, selectedCaseId);
-
-      if (updateError) throw updateError;
-
-      onStatusChange(selectedCaseId, 'Submitted');
 
       if (activeFormTab === '8300s') {
         await load8300s();
       }
 
+      // Remove submitted cases from the list
       setSortedCases(prev => prev.filter(c => {
         const caseId = activeFormTab === 'CTRs' ? c.ctr_id : c.form_id;
-        return caseId !== selectedCaseId;
+        return !selectedCases.has(caseId || '');
       }));
 
       setShowSubmitModal(false);
       setSelectedCaseId(null);
       setSelectedApprover('');
       setSelectedRecommendation(activeFormTab === 'CTRs' ? 'File CTR' : 'File 8300');
+      setSelectedCases(new Set());
+      setIsSelectionMode(false);
     } catch (error) {
-      console.error('Error submitting case:', error);
-      setError('Failed to submit case');
+      console.error('Error submitting cases:', error);
+      setError('Failed to submit cases');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    if (!activeTab || !e.target.files?.length) return;
+  const handleFileInputChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    const files = Array.from(e.target.files);
+    await handleFileUpload(files);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFileUpload = async (files: File[]) => {
+    if (!activeTab) return;
 
     setIsLoading(true);
-    const files = Array.from(e.target.files);
-
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
@@ -363,7 +367,7 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
             file_size: file.size,
             file_type: file.type,
             file_path: storageData.path,
-            last_modified: new Date(file.lastModified).toISOString(),
+            last_modified: new Date().toISOString(),
             user_id: user.id
           })
           .select()
@@ -379,19 +383,16 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
               id: dbData.id,
               name: file.name,
               size: file.size,
-              lastModified: new Date(file.lastModified).toLocaleString(),
+              lastModified: new Date().toLocaleString(),
               type: file.type,
               file_path: storageData.path
             }
           ]
         }));
       }
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     } catch (error) {
       console.error('Error uploading files:', error);
+      setError('Failed to upload files');
     } finally {
       setIsLoading(false);
     }
@@ -648,16 +649,95 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
     }
   };
 
-  const formatCurrency = (amount: number | null): string => {
+  const formatCurrency = (amount: number | null | undefined): string => {
     if (amount === null || amount === undefined) return '$0.00';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  };
+
+  const handleGenerateCTR = async (caseId: string) => {
     try {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD'
-      }).format(amount);
+      setIsLoading(true);
+      
+      // Get the case data
+      const currentCase = underReviewCases.find(c => c.ctr_id === caseId);
+      if (!currentCase) {
+        throw new Error('Case not found');
+      }
+
+      // Generate the CTR PDF
+      const pdfBlob = await generateCTRFromTemplate({
+        ctr_id: currentCase.ctr_id,
+        gaming_day: currentCase.gaming_day,
+        ship: currentCase.ship,
+        first_name: currentCase.first_name,
+        last_name: currentCase.last_name,
+        date_of_birth: currentCase.date_of_birth,
+        embark_date: currentCase.embark_date,
+        debark_date: currentCase.debark_date,
+        cash_in_total: currentCase.cash_in_total,
+        cash_out_total: currentCase.cash_out_total,
+        patron_id: currentCase.patron_id
+      });
+
+      // Create a download link
+      const url = URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `CTR_${currentCase.first_name}_${currentCase.last_name}_${new Date(currentCase.gaming_day).toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // Save the generated CTR to case files
+      const file = new File([pdfBlob], link.download, { type: 'application/pdf' });
+      await handleFileUpload([file]);
+
     } catch (error) {
-      console.error('Error formatting currency:', error);
-      return '$0.00';
+      console.error('Error generating CTR:', error);
+      setError('Failed to generate CTR');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleCaseSelection = (id: string) => {
+    setSelectedCases(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(id)) {
+        newSelection.delete(id);
+      } else {
+        newSelection.add(id);
+      }
+      return newSelection;
+    });
+  };
+
+  const handleFileDownload = async (filePath: string, fileName: string) => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase.storage
+        .from('case-files')
+        .download(filePath);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      setError('Failed to download file');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -950,7 +1030,7 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
                 <input
                   type="file"
                   ref={fileInputRef}
-                  onChange={handleFileUpload}
+                  onChange={handleFileInputChange}
                   className="hidden"
                   multiple
                 />
@@ -963,8 +1043,9 @@ export function UnderReview({ cases, onStatusChange }: UnderReviewProps) {
                   Upload
                 </button>
                 <button
-                  onClick={() => setShowCTRModal(true)}
+                  onClick={() => handleGenerateCTR(activeTab)}
                   className="inline-flex items-center px-3 py-1 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  disabled={isLoading}
                 >
                   <FilePlus className="w-4 h-4 mr-1" />
                   Generate {activeFormTab === 'CTRs' ? 'CTR' : '8300'}

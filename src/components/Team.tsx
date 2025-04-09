@@ -2,19 +2,30 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Phone, Calendar, UserPlus, Settings, Save, X, Shield } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+interface Profile {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: string;
+  avatar_url: string | null;
+  roles: Role[];
+  is_admin: boolean;
+}
+
 interface TeamMember {
   id: string;
   name: string;
-  role: string;
+  role: Role;
   email: string;
   phone: string;
   joinDate: string;
   avatar: string;
-  roles: string[];
+  roles: Role[];
   is_admin: boolean;
 }
 
-const AVAILABLE_ROLES = ['CTR', 'PSA', '8300'] as const;
+const AVAILABLE_ROLES = ['Admin', 'Analyst', 'Manager'] as const;
 type Role = typeof AVAILABLE_ROLES[number];
 
 export function Team() {
@@ -27,6 +38,27 @@ export function Team() {
   useEffect(() => {
     loadTeamMembers();
     checkAdminStatus();
+
+    // Subscribe to profile changes
+    const subscription = supabase
+      .channel('profile-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles'
+        },
+        () => {
+          // Reload team members when any profile changes
+          loadTeamMembers();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const checkAdminStatus = async () => {
@@ -57,19 +89,32 @@ export function Team() {
 
       if (error) throw error;
 
-      setTeamMembers(
-        profiles.map(profile => ({
+      const defaultRole: Role = 'Analyst';
+      const mappedMembers: TeamMember[] = (profiles as Profile[]).map(profile => {
+        // Filter and validate roles from the database
+        const validRoles = Array.isArray(profile.roles) 
+          ? profile.roles.filter((role): role is Role => 
+              AVAILABLE_ROLES.includes(role as Role)
+            )
+          : [];
+
+        // Ensure at least one valid role
+        const finalRoles = validRoles.length > 0 ? validRoles : [defaultRole];
+        
+        return {
           id: profile.id,
           name: profile.full_name || 'Unknown',
-          role: profile.roles?.[0] || 'User',
+          role: finalRoles[0],
           email: profile.email || '',
           phone: profile.phone || '',
           joinDate: profile.created_at,
           avatar: profile.avatar_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?fit=crop&w=128&h=128&q=80',
-          roles: profile.roles || [],
+          roles: finalRoles,
           is_admin: profile.is_admin || false
-        }))
-      );
+        };
+      });
+
+      setTeamMembers(mappedMembers);
     } catch (error) {
       console.error('Error loading team members:', error);
       setError('Failed to load team members');
@@ -78,12 +123,12 @@ export function Team() {
     }
   };
 
-  const handleRoleChange = async (memberId: string, roles: string[]) => {
+  const handleRoleChange = async (memberId: string, newRoles: Role[]) => {
     try {
       const { error } = await supabase
         .from('profiles')
         .update({ 
-          roles,
+          roles: newRoles,
           updated_at: new Date().toISOString()
         })
         .eq('id', memberId);
@@ -93,7 +138,7 @@ export function Team() {
       setTeamMembers(prev =>
         prev.map(member =>
           member.id === memberId
-            ? { ...member, roles }
+            ? { ...member, roles: newRoles, role: newRoles[0] || 'Analyst' }
             : member
         )
       );
@@ -217,7 +262,9 @@ export function Team() {
                                 const newRoles = member.roles.includes(role)
                                   ? member.roles.filter(r => r !== role)
                                   : [...member.roles, role];
-                                handleRoleChange(member.id, newRoles);
+                                if (newRoles.length > 0) {
+                                  handleRoleChange(member.id, newRoles);
+                                }
                               }}
                               className={`px-3 py-1 rounded-full text-xs font-medium ${
                                 member.roles.includes(role)

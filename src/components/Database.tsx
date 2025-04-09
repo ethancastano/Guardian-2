@@ -44,6 +44,7 @@ interface PatronFile {
   lastModified: string;
   type: string;
   file_path: string;
+  description?: string;
 }
 
 export function Database() {
@@ -145,12 +146,24 @@ export function Database() {
     try {
       const { data, error } = await supabase
         .from('patron_files')
-        .select('*')
+        .select('id, file_name, file_size, file_type, file_path, last_modified, description')
         .eq('patron_id', patronId)
         .order('uploaded_at', { ascending: false });
 
       if (error) throw error;
-      setPatronFiles(data || []);
+
+      // Transform the data to match the PatronFile interface
+      const transformedFiles = (data || []).map(file => ({
+        id: file.id,
+        name: file.file_name,
+        size: file.file_size,
+        type: file.file_type,
+        file_path: file.file_path,
+        lastModified: file.last_modified,
+        description: file.description
+      }));
+
+      setPatronFiles(transformedFiles);
     } catch (error) {
       console.error('Error loading patron files:', error);
       setError('Failed to load patron files');
@@ -449,32 +462,43 @@ export function Database() {
               {patronFiles.map((file) => (
                 <div
                   key={file.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                  className="bg-gray-50 dark:bg-gray-800 rounded-lg overflow-hidden"
                 >
-                  <div className="flex items-center">
-                    <File className="h-6 w-6 text-blue-500 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {file.name}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatFileSize(file.size)} • {formatDate(file.lastModified)}
-                      </p>
+                  <div className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center flex-grow">
+                        <File className="h-6 w-6 text-blue-500 mr-3 flex-shrink-0" />
+                        <div className="min-w-0 flex-grow">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {formatFileSize(file.size)} • {formatDate(file.lastModified)}
+                          </p>
+                          {file.description && (
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                              {file.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex space-x-2 ml-4">
+                        <button
+                          onClick={() => handleFileDownload(file.file_path, file.name)}
+                          className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                          title="Download"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleFileDelete(file.id, file.file_path)}
+                          className="p-2 text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20"
+                          title="Delete"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleFileDownload(file.file_path, file.name)}
-                      className="p-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
-                    >
-                      <Download className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleFileDelete(file.id, file.file_path)}
-                      className="p-2 text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
                   </div>
                 </div>
               ))}

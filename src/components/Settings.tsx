@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, Bell, Lock, Save, X, Plus, Trash2, User } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
+import ReactCrop, { Crop as CropType, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -15,20 +15,25 @@ interface NotificationSetting {
 interface Profile {
   id: string;
   avatar_url: string | null;
-  roles: string[];
+  roles: Role[];
   first_name: string | null;
   last_name: string | null;
 }
 
-const AVAILABLE_ROLES = ['CTR', 'PSA', '8300'] as const;
+const AVAILABLE_ROLES = ['Admin', 'Analyst', 'Manager'] as const;
 type Role = typeof AVAILABLE_ROLES[number];
 
+type Crop = CropType & {
+  aspect?: number;
+  unit: 'px' | '%';
+};
+
 const DEFAULT_CROP: Crop = {
-  unit: '%',
-  width: 100,
-  height: 100,
+  unit: 'px',
   x: 0,
   y: 0,
+  width: 100,
+  height: 100,
   aspect: 1
 };
 
@@ -39,7 +44,7 @@ export function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [roles, setRoles] = useState<Role[]>(['CTR']);
+  const [roles, setRoles] = useState<Role[]>(['Analyst']);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCropModal, setShowCropModal] = useState(false);
@@ -196,27 +201,27 @@ export function Settings() {
       if (uploadError) throw uploadError;
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
+      const { data } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName);
 
-      // Update profile
+      const publicUrl = data.publicUrl;
+
+      // Update profile with new avatar URL
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ 
-          avatar_url: publicUrl,
-          updated_at: new Date().toISOString()
-        })
+        .update({ avatar_url: publicUrl })
         .eq('id', user.id);
 
       if (updateError) throw updateError;
 
+      // Update local state
       setAvatar(publicUrl);
       setShowCropModal(false);
       setCropImage('');
     } catch (error) {
       console.error('Error uploading avatar:', error);
-      setError(error instanceof Error ? error.message : 'Failed to upload avatar');
+      setError('Failed to upload avatar');
     } finally {
       setIsUploading(false);
     }
@@ -277,10 +282,28 @@ export function Settings() {
 
       if (updateError) throw updateError;
 
-      alert('Roles updated successfully');
+      // Show success message
+      const successMessage = document.createElement('div');
+      successMessage.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg';
+      successMessage.textContent = 'Roles updated successfully';
+      document.body.appendChild(successMessage);
+      
+      // Remove the message after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(successMessage);
+      }, 3000);
     } catch (error) {
       console.error('Error updating roles:', error);
-      alert('Failed to update roles');
+      // Show error message
+      const errorMessage = document.createElement('div');
+      errorMessage.className = 'fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg';
+      errorMessage.textContent = 'Failed to update roles';
+      document.body.appendChild(errorMessage);
+      
+      // Remove the message after 3 seconds
+      setTimeout(() => {
+        document.body.removeChild(errorMessage);
+      }, 3000);
     }
   };
 
