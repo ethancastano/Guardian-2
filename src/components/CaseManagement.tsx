@@ -123,9 +123,11 @@ export function CaseManagement({ cases, onStatusChange }: CaseManagementProps) {
       });
     } else if (sortField === 'status') {
       sorted.sort((a, b) => {
+        const statusA = a.status === 'Under Review' ? 'Under Review' : 'New';
+        const statusB = b.status === 'Under Review' ? 'Under Review' : 'New';
         return sortOrder === 'asc'
-          ? a.status.localeCompare(b.status)
-          : b.status.localeCompare(a.status);
+          ? statusA.localeCompare(statusB)
+          : statusB.localeCompare(statusA);
       });
     } else if (sortField === 'ship') {
       sorted.sort((a, b) => {
@@ -435,6 +437,15 @@ export function CaseManagement({ cases, onStatusChange }: CaseManagementProps) {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">ID</th>
               <th 
                 className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
+                onClick={() => handleSort('status')}
+              >
+                <div className="flex items-center">
+                  Status
+                  {getSortIcon('status')}
+                </div>
+              </th>
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer"
                 onClick={() => handleSort('gaming_day')}
               >
                 <div className="flex items-center">
@@ -562,6 +573,25 @@ export function CaseManagement({ cases, onStatusChange }: CaseManagementProps) {
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400 font-medium">{id}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span className={`px-2 py-1 rounded-full font-medium ${
+                      caseItem.status === 'Under Review' 
+                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' 
+                        : caseItem.status === 'Assigned'
+                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+                        : caseItem.status === 'Submitted'
+                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                    }`}>
+                      {caseItem.status === 'Under Review' 
+                        ? 'Under Review' 
+                        : caseItem.status === 'Assigned'
+                        ? 'Assigned'
+                        : caseItem.status === 'Submitted'
+                        ? 'Submitted'
+                        : 'New'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                     {formatDate(caseItem.gaming_day)}
                   </td>

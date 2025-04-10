@@ -449,47 +449,62 @@ export function DashboardStats() {
           {/* Days Until Filing Deadline */}
           <div className="bg-white dark:bg-gray-900 rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Days Until Filing Deadline</h3>
-            <div className="h-64 flex items-end space-x-2">
-              {daysToFile.map(({ days, count }) => (
-                <div key={days} className="flex-1 flex flex-col items-center">
-                  <div 
-                    className={`w-full rounded-t ${
-                      days <= 5 ? 'bg-red-500' : 
-                      days <= 10 ? 'bg-orange-500' : 
-                      'bg-green-500'
-                    }`}
-                    style={{ 
-                      height: `${Math.min((count / Math.max(...daysToFile.map(d => d.count))) * 100, 100)}%`
-                    }}
-                  ></div>
-                  <span className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    {days < 0 ? 'Overdue' : `${days} days`}
-                  </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    ({count})
-                  </span>
+            
+            {/* Overdue Summary */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="bg-red-100 dark:bg-red-900/20 p-4 rounded-lg">
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {daysToFile.filter(d => d.days < 0).reduce((sum, d) => sum + d.count, 0)}
                 </div>
-              ))}
-              {daysToFile.length === 0 && (
-                <div className="w-full text-center py-4 text-gray-500 dark:text-gray-400">
-                  No pending deadlines
-                </div>
-              )}
+                <div className="text-sm text-red-600 dark:text-red-400">Overdue</div>
+              </div>
             </div>
-            <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-              Days remaining until 15-day filing deadline
+
+            {/* Bar Chart */}
+            <div className="h-80">
+              <div className="h-64 flex items-end space-x-1">
+                {daysToFile.map(({ days, count }) => {
+                  // Group days into ranges: 15+, 10-15, 5-10, 0-5, and negative (overdue)
+                  const getBarColor = () => {
+                    if (days < 0) return 'bg-red-500 dark:bg-red-600';
+                    if (days <= 5) return 'bg-red-400 dark:bg-red-500';
+                    if (days <= 10) return 'bg-yellow-400 dark:bg-yellow-500';
+                    return 'bg-green-400 dark:bg-green-500';
+                  };
+
+                  const maxCount = Math.max(...daysToFile.map(d => d.count));
+                  const height = Math.max((count / maxCount) * 100, 10); // Minimum 10% height for visibility
+
+                  return (
+                    <div key={days} className="flex-1 flex flex-col items-center justify-end">
+                      <div className="w-full flex flex-col items-center">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{count}</div>
+                        <div 
+                          className={`w-full ${getBarColor()}`}
+                          style={{ height: `${height}%` }}
+                        ></div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                          {days < 0 ? `${Math.abs(days)}d late` : `${days}d left`}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            <div className="mt-2 flex justify-center space-x-4 text-xs">
+
+            {/* Legend */}
+            <div className="mt-4 flex justify-center space-x-6 text-sm">
               <div className="flex items-center">
-                <div className="w-3 h-3 bg-red-500 rounded mr-1"></div>
+                <div className="w-3 h-3 bg-red-500 rounded mr-2"></div>
                 <span className="text-gray-600 dark:text-gray-400">Critical (&lt;5 days)</span>
               </div>
               <div className="flex items-center">
-                <div className="w-3 h-3 bg-orange-500 rounded mr-1"></div>
+                <div className="w-3 h-3 bg-yellow-400 rounded mr-2"></div>
                 <span className="text-gray-600 dark:text-gray-400">Warning (&lt;10 days)</span>
               </div>
               <div className="flex items-center">
-                <div className="w-3 h-3 bg-green-500 rounded mr-1"></div>
+                <div className="w-3 h-3 bg-green-400 rounded mr-2"></div>
                 <span className="text-gray-600 dark:text-gray-400">On Track</span>
               </div>
             </div>
