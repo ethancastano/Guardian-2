@@ -548,25 +548,37 @@ export function CaseManagement({ cases, onStatusChange }: CaseManagementProps) {
                   )}
                   <td className="px-6 py-4 whitespace-nowrap">
                     {!isSelectionMode && (
-                      <div className="relative inline-block">
-                        <select
-                          onChange={(e) => handleAssign(id, e.target.value)}
-                          className={`block w-40 pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md dark:bg-gray-800 dark:text-white ${
-                            assignLoading[id] ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                          defaultValue=""
-                          disabled={assignLoading[id]}
-                        >
-                          <option value="" disabled>Assign to...</option>
-                          {teamMembers.map(member => (
-                            <option key={member.id} value={member.id}>
-                              {member.full_name}
-                            </option>
-                          ))}
-                        </select>
-                        {assignLoading[id] && (
-                          <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                            <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                      <div>
+                        {caseItem.status === 'Under Review' ? (
+                          <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">
+                            {caseItem.profiles?.full_name}
+                          </div>
+                        ) : caseItem.status === 'Assigned' ? (
+                          <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                            {caseItem.profiles?.full_name}
+                          </div>
+                        ) : (
+                          <div className="relative inline-block">
+                            <select
+                              onChange={(e) => handleAssign(id, e.target.value)}
+                              className={`block w-40 pl-3 pr-10 py-2 text-base border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md dark:bg-gray-800 dark:text-white ${
+                                assignLoading[id] ? 'opacity-50 cursor-not-allowed' : ''
+                              }`}
+                              defaultValue=""
+                              disabled={assignLoading[id]}
+                            >
+                              <option value="" disabled>Assign to...</option>
+                              {teamMembers.map(member => (
+                                <option key={member.id} value={member.id}>
+                                  {member.full_name}
+                                </option>
+                              ))}
+                            </select>
+                            {assignLoading[id] && (
+                              <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -584,7 +596,7 @@ export function CaseManagement({ cases, onStatusChange }: CaseManagementProps) {
                         : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
                     }`}>
                       {caseItem.status === 'Under Review' 
-                        ? 'Under Review' 
+                        ? 'Under Review'
                         : caseItem.status === 'Assigned'
                         ? 'Assigned'
                         : caseItem.status === 'Submitted'

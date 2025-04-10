@@ -150,22 +150,8 @@ export async function generateCTRFromTemplate(ctrData: CTRData): Promise<Blob> {
     // Convert template data to ArrayBuffer and return as Blob
     const arrayBuffer = await templateData.arrayBuffer();
     const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-
-    // Create a download link
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `CTR_${ctrData.ctr_id}_${new Date().toISOString().split('T')[0]}.pdf`;
     
-    // Trigger download
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    // Clean up the URL
-    setTimeout(() => {
-      URL.revokeObjectURL(link.href);
-    }, 100);
-
+    // Return the blob without triggering a download
     return blob;
   } catch (error) {
     console.error('Error handling CTR template:', error);
