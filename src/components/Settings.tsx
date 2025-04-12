@@ -37,6 +37,12 @@ const DEFAULT_CROP: Crop = {
   aspect: 1
 };
 
+const getInitials = (firstName: string, lastName: string): string => {
+  const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
+  const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
+  return `${firstInitial}${lastInitial}`;
+};
+
 export function Settings() {
   const [avatar, setAvatar] = useState<string>('');
   const [firstName, setFirstName] = useState('');
@@ -351,16 +357,14 @@ export function Settings() {
           
           <div className="flex items-start space-x-6">
             <div className="relative">
-              <img
-                src={avatar || 'https://via.placeholder.com/150'}
-                alt="Profile"
-                className="w-24 h-24 rounded-full object-cover"
-              />
+              <div className="w-24 h-24 rounded-full bg-blue-600 flex items-center justify-center text-white text-2xl font-semibold">
+                {getInitials(firstName, lastName)}
+              </div>
               <label
                 htmlFor="avatar-upload"
                 className="absolute bottom-0 right-0 bg-blue-600 p-2 rounded-full text-white cursor-pointer hover:bg-blue-700 transition-colors"
               >
-                <Camera className="w-4 h-4" />
+                <User className="w-4 h-4" />
               </label>
               <input
                 id="avatar-upload"

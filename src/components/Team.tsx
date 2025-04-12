@@ -28,6 +28,14 @@ interface TeamMember {
 const AVAILABLE_ROLES = ['Admin', 'Analyst', 'Manager'] as const;
 type Role = typeof AVAILABLE_ROLES[number];
 
+const getInitials = (name: string): string => {
+  const parts = name.split(' ');
+  if (parts.length >= 2) {
+    return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+  }
+  return parts[0].charAt(0).toUpperCase();
+};
+
 export function Team() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -210,11 +218,9 @@ export function Team() {
                 key={member.id}
                 className="flex items-start space-x-4 p-4 rounded-lg border border-gray-200 dark:border-gray-700"
               >
-                <img
-                  src={member.avatar}
-                  alt={member.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                />
+                <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl font-semibold">
+                  {getInitials(member.name)}
+                </div>
                 <div className="flex-1">
                   <div className="flex justify-between items-start">
                     <div>
